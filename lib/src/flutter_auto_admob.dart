@@ -67,10 +67,13 @@ class AutoAdmob {
     _isInitialized = false;
   }
 
-  static void _delayBetweenAppOpenAd() {
+  static void _pauseAppOpenAd() {
     _isAppOpenAdCoolingDown = true;
     _appOpenAdTimer?.cancel();
     _appOpenAdTimer = null;
+  }
+
+  static void _resumeAppOpenAd() {
     Future.delayed(_config.delayBetween, () {
       _isAppOpenAdCoolingDown = false;
       _appOpenAdTimer = Timer.periodic(
@@ -80,10 +83,13 @@ class AutoAdmob {
     });
   }
 
-  static void _delayBetweenInterstitialAd() {
+  static void _pauseInterstitialAd() {
     _isInterstitialAdCoolingDown = true;
     _interstitialAdTimer?.cancel();
     _interstitialAdTimer = null;
+  }
+
+  static void _resumeInterstitialAd() {
     Future.delayed(_config.delayBetween, () {
       _isInterstitialAdCoolingDown = false;
       _interstitialAdTimer = Timer.periodic(
@@ -106,13 +112,16 @@ class AutoAdmob {
               _interstitialAd = ad;
               _interstitialAd
                   ?.fullScreenContentCallback = FullScreenContentCallback(
+                onAdShowedFullScreenContent: (ad) {
+                  _pauseAppOpenAd();
+                },
                 onAdDismissedFullScreenContent: (ad) {
                   _isInterstitialAdCoolingDown = true;
                   Future.delayed(Duration(seconds: 3), () async {
                     await _interstitialAd?.dispose();
                     _interstitialAd = null;
                   });
-                  _delayBetweenAppOpenAd();
+                  _resumeAppOpenAd();
                 },
               );
               log(
@@ -141,13 +150,16 @@ class AutoAdmob {
             onAdLoaded: (ad) {
               _appOpenAd = ad;
               _appOpenAd?.fullScreenContentCallback = FullScreenContentCallback(
+                onAdShowedFullScreenContent: (ad) {
+                  _pauseInterstitialAd();
+                },
                 onAdDismissedFullScreenContent: (ad) {
                   _isAppOpenAdCoolingDown = true;
                   Future.delayed(Duration(seconds: 3), () async {
                     await _appOpenAd?.dispose();
                     _appOpenAd = null;
                   });
-                  _delayBetweenInterstitialAd();
+                  _resumeInterstitialAd();
                 },
               );
               log(
@@ -185,10 +197,13 @@ class AutoAdmob {
               InterstitialAdLoadCallback(
                 onAdLoaded: (ad) {
                   ad.fullScreenContentCallback = FullScreenContentCallback(
+                    onAdShowedFullScreenContent: (ad) {
+                      _pauseAppOpenAd();
+                    },
                     onAdDismissedFullScreenContent: (ad) {
                       _isInterstitialAdCoolingDown = true;
                       ad.dispose();
-                      _delayBetweenAppOpenAd();
+                      _resumeAppOpenAd();
                     },
                   );
                   ad.show();
@@ -221,10 +236,13 @@ class AutoAdmob {
               AppOpenAdLoadCallback(
                 onAdLoaded: (ad) {
                   ad.fullScreenContentCallback = FullScreenContentCallback(
+                    onAdShowedFullScreenContent: (ad) {
+                      _pauseInterstitialAd();
+                    },
                     onAdDismissedFullScreenContent: (ad) {
                       _isAppOpenAdCoolingDown = true;
                       ad.dispose();
-                      _delayBetweenInterstitialAd();
+                      _resumeInterstitialAd();
                     },
                   );
                   ad.show();
