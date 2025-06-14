@@ -20,18 +20,18 @@ class AutoAdmob {
   Completer? _interstitialAdCompleter;
   Completer? _appOpenAdCompleter;
 
-  Function? onPreloadInterstitialAdReady;
-  Function? onPreloadAppOpenAdReady;
+  Function? onInterstitialAdReady;
+  Function? onAppOpenAdReady;
 
   Future initialize({AutoAdmobConfig? config}) async {
     if (config != null) this.config = config;
     assert(
-    this.config.interstitialCooldown.inSeconds >= 60,
-    "[AUTO ADMOB] the interstitial ad cool down should be equal or greater than 1 minute.",
+      this.config.interstitialCooldown.inSeconds >= 60,
+      "[AUTO ADMOB] the interstitial ad cool down should be equal or greater than 1 minute.",
     );
     assert(
-    this.config.appOpenAdCooldown.inSeconds >= 60,
-    "[AUTO ADMOB] the app open ad cool down should be equal or greater than 1 minute.",
+      this.config.appOpenAdCooldown.inSeconds >= 60,
+      "[AUTO ADMOB] the app open ad cool down should be equal or greater than 1 minute.",
     );
     await MobileAds.instance.initialize();
     _isInitialized = true;
@@ -121,6 +121,7 @@ class AutoAdmob {
   void _onInterstitialAdTimerExecuted(Timer timer) {
     if (config.interstitialAdLoadType == AutoAdmobLoadType.none) {
       _isInterstitialAdCoolingDown = false;
+      onInterstitialAdReady?.call();
     } else {
       if (_interstitialAd == null) {
         _createInterstitialAdCompleter();
@@ -150,7 +151,7 @@ class AutoAdmob {
               );
               Future.delayed(Duration(seconds: 15), () {
                 _isInterstitialAdCoolingDown = false;
-                onPreloadInterstitialAdReady?.call();
+                onInterstitialAdReady?.call();
               });
             },
             onAdFailedToLoad: (error) => throw Exception(error.message),
@@ -163,6 +164,7 @@ class AutoAdmob {
   void _onAppOpenAdTimerExecuted(Timer timer) {
     if (config.appOpenAdLoadType == AutoAdmobLoadType.none) {
       _isAppOpenAdCoolingDown = false;
+      onAppOpenAdReady?.call();
     } else {
       if (_appOpenAd == null) {
         _createAppOpenCompleter();
@@ -191,7 +193,7 @@ class AutoAdmob {
               );
               Future.delayed(Duration(seconds: 15), () {
                 _isAppOpenAdCoolingDown = false;
-                onPreloadAppOpenAdReady?.call();
+                onAppOpenAdReady?.call();
               });
             },
             onAdFailedToLoad: (error) => throw Exception(error.message),
@@ -301,5 +303,4 @@ class AutoAdmob {
     _appOpenAd = null;
     _isInitialized = false;
   }
-
 }
