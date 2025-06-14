@@ -13,6 +13,25 @@ class AutoAdmobConfig {
   AutoAdmobLoadType interstitialAdLoadType = AutoAdmobLoadType.preload;
   AutoAdmobLoadType appOpenAdLoadType = AutoAdmobLoadType.preload;
 
+  AutoAdmobConfig copyWith({
+    String? interstitialAdUnitId,
+    String? appOpenAdUnitId,
+    Duration? interstitialCooldown,
+    Duration? appOpenAdCooldown,
+    Duration? delayBetween,
+    AutoAdmobLoadType? appOpenAdLoadType,
+    AutoAdmobLoadType? interstitialAdLoadType,
+  }) => AutoAdmobConfig(
+    interstitialAdUnitId: interstitialAdUnitId ?? this.interstitialAdUnitId,
+    appOpenAdUnitId: appOpenAdUnitId ?? this.appOpenAdUnitId,
+    appOpenAdCooldown: appOpenAdCooldown ?? this.appOpenAdCooldown,
+    interstitialCooldown: interstitialCooldown ?? this.interstitialCooldown,
+    delayBetween: delayBetween ?? this.delayBetween,
+    appOpenAdLoadType: appOpenAdLoadType ?? this.appOpenAdLoadType,
+    interstitialAdLoadType:
+        interstitialAdLoadType ?? this.interstitialAdLoadType,
+  );
+
   Duration get calculatedInterstitialAdCooldown {
     if (interstitialAdLoadType == AutoAdmobLoadType.preload) {
       return Duration(seconds: interstitialCooldown.inSeconds - 15);
