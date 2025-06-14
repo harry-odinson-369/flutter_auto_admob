@@ -20,10 +20,17 @@ class AutoAdmob {
   Completer? _interstitialAdCompleter;
   Completer? _appOpenAdCompleter;
 
-  void onAppLifeCycleStateChanged(void Function(AppState state) stateChanged) {
+  static void startListenOnAppLifeCycleStateChanged(
+    void Function(AppState state) stateChanged,
+  ) {
     AppStateEventNotifier.startListening();
     AppStateEventNotifier.appStateStream.forEach(stateChanged);
     log("[AUTO ADMOB] started listening app life cycle state.");
+  }
+
+  static void stopListenOnAppLifeCycleStateChanged() {
+    AppStateEventNotifier.stopListening();
+    log("[AUTO ADMOB] stopped listening app life cycle state.");
   }
 
   Future initialize({AutoAdmobConfig? config}) async {
