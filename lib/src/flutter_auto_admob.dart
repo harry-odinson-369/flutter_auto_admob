@@ -16,6 +16,9 @@ AppOpenAd? _appOpenAd;
 Timer? _interstitialAdTimer;
 Timer? _appOpenAdTimer;
 
+Completer? _interstitialAdCompleter;
+Completer? _appOpenAdCompleter;
+
 class AutoAdmob {
   static AutoAdmobConfig get config => _config;
   static set config(AutoAdmobConfig config) {
@@ -99,11 +102,40 @@ class AutoAdmob {
     });
   }
 
+  static void _createAppOpenCompleter() {
+    if (_appOpenAdCompleter?.isCompleted == false) {
+      _appOpenAdCompleter?.complete();
+    }
+    _appOpenAdCompleter = null;
+    _appOpenAdCompleter = Completer();
+  }
+
+  static void _completeAppOpenAd() {
+    if (_appOpenAdCompleter?.isCompleted == false) {
+      _appOpenAdCompleter?.complete();
+    }
+  }
+
+  static void _createInterstitialAdCompleter() {
+    if (_interstitialAdCompleter?.isCompleted == false) {
+      _interstitialAdCompleter?.complete();
+    }
+    _interstitialAdCompleter = null;
+    _interstitialAdCompleter = Completer();
+  }
+
+  static void _completeInterstitialAd() {
+    if (_interstitialAdCompleter?.isCompleted == false) {
+      _interstitialAdCompleter?.complete();
+    }
+  }
+
   static void _onInterstitialAdTimerExecuted(Timer timer) {
     if (_config.interstitialAdLoadType == AutoAdmobLoadType.none) {
       _isInterstitialAdCoolingDown = false;
     } else {
       if (_interstitialAd == null) {
+        _createInterstitialAdCompleter();
         InterstitialAd.load(
           adUnitId: _config.interstitialAdUnitId,
           request: AdRequest(),
@@ -122,6 +154,7 @@ class AutoAdmob {
                     _interstitialAd = null;
                   });
                   _resumeAppOpenAd();
+                  _completeInterstitialAd();
                 },
               );
               log(
@@ -143,6 +176,7 @@ class AutoAdmob {
       _isAppOpenAdCoolingDown = false;
     } else {
       if (_appOpenAd == null) {
+        _createAppOpenCompleter();
         AppOpenAd.load(
           adUnitId: _config.appOpenAdUnitId,
           request: AdRequest(),
@@ -160,6 +194,7 @@ class AutoAdmob {
                     _appOpenAd = null;
                   });
                   _resumeInterstitialAd();
+                  _completeAppOpenAd();
                 },
               );
               log(
@@ -179,6 +214,7 @@ class AutoAdmob {
   static Future showInterstitialAd({
     AdRequest? request,
     InterstitialAdLoadCallback? callback,
+    bool waitUntil = true,
   }) async {
     assert(_isInitialized, "[AUTO ADMOB] you need to call initialize first!");
     assert(
@@ -189,6 +225,7 @@ class AutoAdmob {
       if (config.interstitialAdLoadType == AutoAdmobLoadType.preload) {
         _interstitialAd?.show();
       } else {
+        _createInterstitialAdCompleter();
         await InterstitialAd.load(
           adUnitId: config.interstitialAdUnitId,
           request: AdRequest(),
@@ -204,6 +241,7 @@ class AutoAdmob {
                       _isInterstitialAdCoolingDown = true;
                       ad.dispose();
                       _resumeAppOpenAd();
+                      _completeInterstitialAd();
                     },
                   );
                   ad.show();
@@ -213,11 +251,13 @@ class AutoAdmob {
         );
       }
     }
+    if (waitUntil) return _interstitialAdCompleter?.future;
   }
 
   static Future showAppOpenAd({
     AdRequest? request,
     AppOpenAdLoadCallback? callback,
+    bool waitUntil = true,
   }) async {
     assert(_isInitialized, "[AUTO ADMOB] you need to call initialize first!");
     assert(
@@ -228,6 +268,7 @@ class AutoAdmob {
       if (config.appOpenAdLoadType == AutoAdmobLoadType.preload) {
         _appOpenAd?.show();
       } else {
+        _createAppOpenCompleter();
         await AppOpenAd.load(
           adUnitId: config.appOpenAdUnitId,
           request: AdRequest(),
@@ -243,6 +284,7 @@ class AutoAdmob {
                       _isAppOpenAdCoolingDown = true;
                       ad.dispose();
                       _resumeInterstitialAd();
+                      _completeAppOpenAd();
                     },
                   );
                   ad.show();
@@ -252,5 +294,6 @@ class AutoAdmob {
         );
       }
     }
+    if (waitUntil) return _appOpenAdCompleter?.future;
   }
 }
