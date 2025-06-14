@@ -20,28 +20,18 @@ class AutoAdmob {
   Completer? _interstitialAdCompleter;
   Completer? _appOpenAdCompleter;
 
-  static void startListenOnAppLifeCycleStateChanged(
-    void Function(AppState state) stateChanged,
-  ) {
-    AppStateEventNotifier.startListening();
-    AppStateEventNotifier.appStateStream.forEach(stateChanged);
-    log("[AUTO ADMOB] started listening app life cycle state.");
-  }
-
-  static void stopListenOnAppLifeCycleStateChanged() {
-    AppStateEventNotifier.stopListening();
-    log("[AUTO ADMOB] stopped listening app life cycle state.");
-  }
+  Function? onPreloadInterstitialAdReady;
+  Function? onPreloadAppOpenAdReady;
 
   Future initialize({AutoAdmobConfig? config}) async {
     if (config != null) this.config = config;
     assert(
-      this.config.interstitialCooldown.inSeconds >= 60,
-      "[AUTO ADMOB] the interstitial ad cool down should be equal or greater than 1 minute.",
+    this.config.interstitialCooldown.inSeconds >= 60,
+    "[AUTO ADMOB] the interstitial ad cool down should be equal or greater than 1 minute.",
     );
     assert(
-      this.config.appOpenAdCooldown.inSeconds >= 60,
-      "[AUTO ADMOB] the app open ad cool down should be equal or greater than 1 minute.",
+    this.config.appOpenAdCooldown.inSeconds >= 60,
+    "[AUTO ADMOB] the app open ad cool down should be equal or greater than 1 minute.",
     );
     await MobileAds.instance.initialize();
     _isInitialized = true;
@@ -55,19 +45,17 @@ class AutoAdmob {
     );
   }
 
-  /// Cancel all auto ad and will require to call initialize again.
-  Future destroy() async {
-    _interstitialAdTimer?.cancel();
-    _appOpenAdTimer?.cancel();
-    _interstitialAdTimer = null;
-    _appOpenAdTimer = null;
-    _isInterstitialAdCoolingDown = true;
-    _isAppOpenAdCoolingDown = true;
-    await _interstitialAd?.dispose();
-    await _appOpenAd?.dispose();
-    _interstitialAd = null;
-    _appOpenAd = null;
-    _isInitialized = false;
+  static void startListenOnAppLifeCycleStateChanged(
+    void Function(AppState state) stateChanged,
+  ) {
+    AppStateEventNotifier.startListening();
+    AppStateEventNotifier.appStateStream.forEach(stateChanged);
+    log("[AUTO ADMOB] started listening app life cycle state.");
+  }
+
+  static void stopListenOnAppLifeCycleStateChanged() {
+    AppStateEventNotifier.stopListening();
+    log("[AUTO ADMOB] stopped listening app life cycle state.");
   }
 
   void _pauseAppOpenAd() {
@@ -162,6 +150,7 @@ class AutoAdmob {
               );
               Future.delayed(Duration(seconds: 15), () {
                 _isInterstitialAdCoolingDown = false;
+                onPreloadInterstitialAdReady?.call();
               });
             },
             onAdFailedToLoad: (error) => throw Exception(error.message),
@@ -202,6 +191,7 @@ class AutoAdmob {
               );
               Future.delayed(Duration(seconds: 15), () {
                 _isAppOpenAdCoolingDown = false;
+                onPreloadAppOpenAdReady?.call();
               });
             },
             onAdFailedToLoad: (error) => throw Exception(error.message),
@@ -296,4 +286,20 @@ class AutoAdmob {
     }
     if (waitUntil) return _appOpenAdCompleter?.future;
   }
+
+  /// Cancel all auto ad and will require to call initialize again.
+  Future destroy() async {
+    _interstitialAdTimer?.cancel();
+    _appOpenAdTimer?.cancel();
+    _interstitialAdTimer = null;
+    _appOpenAdTimer = null;
+    _isInterstitialAdCoolingDown = true;
+    _isAppOpenAdCoolingDown = true;
+    await _interstitialAd?.dispose();
+    await _appOpenAd?.dispose();
+    _interstitialAd = null;
+    _appOpenAd = null;
+    _isInitialized = false;
+  }
+
 }
