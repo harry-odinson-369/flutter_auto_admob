@@ -1,8 +1,20 @@
+// ignore_for_file: constant_identifier_names
+
 import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter_auto_admob/src/config.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+enum AdState {
+  IDLE,
+  REQUESTING,
+  LOADED,
+  SHOWING,
+  DISMISSED,
+  FAILED_TO_SHOW,
+  FAILED_TO_LOAD,
+}
 
 class AutoAdmob {
   AutoAdmobConfig config = AutoAdmobConfig();
@@ -13,6 +25,9 @@ class AutoAdmob {
 
   InterstitialAd? _interstitialAd;
   AppOpenAd? _appOpenAd;
+
+  AdState interstitialAdState = AdState.IDLE;
+  AdState appOpenAdState = AdState.IDLE;
 
   Timer? _interstitialAdTimer;
   Timer? _appOpenAdTimer;
@@ -125,18 +140,22 @@ class AutoAdmob {
     } else {
       if (_interstitialAd == null) {
         _createInterstitialAdCompleter();
+        interstitialAdState = AdState.REQUESTING;
         InterstitialAd.load(
           adUnitId: config.interstitialAdUnitId,
           request: AdRequest(),
           adLoadCallback: InterstitialAdLoadCallback(
             onAdLoaded: (ad) {
+              interstitialAdState = AdState.LOADED;
               _interstitialAd = ad;
               _interstitialAd
                   ?.fullScreenContentCallback = FullScreenContentCallback(
                 onAdShowedFullScreenContent: (ad) {
+                  interstitialAdState = AdState.SHOWING;
                   _pauseAppOpenAd();
                 },
                 onAdDismissedFullScreenContent: (ad) {
+                  interstitialAdState = AdState.DISMISSED;
                   _isInterstitialAdCoolingDown = true;
                   Future.delayed(Duration(seconds: 3), () async {
                     await _interstitialAd?.dispose();
@@ -144,6 +163,9 @@ class AutoAdmob {
                   });
                   _resumeAppOpenAd();
                   _completeInterstitialAd();
+                },
+                onAdFailedToShowFullScreenContent: (ad, error) {
+                  interstitialAdState = AdState.FAILED_TO_SHOW;
                 },
               );
               log(
@@ -154,7 +176,10 @@ class AutoAdmob {
                 onInterstitialAdReady?.call();
               });
             },
-            onAdFailedToLoad: (error) => throw Exception(error.message),
+            onAdFailedToLoad: (error) {
+              interstitialAdState = AdState.FAILED_TO_LOAD;
+              throw Exception(error.message);
+            },
           ),
         );
       }
@@ -168,17 +193,21 @@ class AutoAdmob {
     } else {
       if (_appOpenAd == null) {
         _createAppOpenCompleter();
+        appOpenAdState = AdState.REQUESTING;
         AppOpenAd.load(
           adUnitId: config.appOpenAdUnitId,
           request: AdRequest(),
           adLoadCallback: AppOpenAdLoadCallback(
             onAdLoaded: (ad) {
+              appOpenAdState = AdState.LOADED;
               _appOpenAd = ad;
               _appOpenAd?.fullScreenContentCallback = FullScreenContentCallback(
                 onAdShowedFullScreenContent: (ad) {
+                  appOpenAdState = AdState.SHOWING;
                   _pauseInterstitialAd();
                 },
                 onAdDismissedFullScreenContent: (ad) {
+                  appOpenAdState = AdState.DISMISSED;
                   _isAppOpenAdCoolingDown = true;
                   Future.delayed(Duration(seconds: 3), () async {
                     await _appOpenAd?.dispose();
@@ -186,6 +215,9 @@ class AutoAdmob {
                   });
                   _resumeInterstitialAd();
                   _completeAppOpenAd();
+                },
+                onAdFailedToShowFullScreenContent: (ad, error) {
+                  appOpenAdState = AdState.FAILED_TO_SHOW;
                 },
               );
               log(
@@ -196,7 +228,10 @@ class AutoAdmob {
                 onAppOpenAdReady?.call();
               });
             },
-            onAdFailedToLoad: (error) => throw Exception(error.message),
+            onAdFailedToLoad: (error) {
+              appOpenAdState = AdState.FAILED_TO_LOAD;
+              throw Exception(error.message);
+            },
           ),
         );
       }
@@ -218,6 +253,7 @@ class AutoAdmob {
         _interstitialAd?.show();
       } else {
         _createInterstitialAdCompleter();
+        interstitialAdState = AdState.REQUESTING;
         await InterstitialAd.load(
           adUnitId: config.interstitialAdUnitId,
           request: AdRequest(),
@@ -225,20 +261,29 @@ class AutoAdmob {
               callback ??
               InterstitialAdLoadCallback(
                 onAdLoaded: (ad) {
+                  interstitialAdState = AdState.LOADED;
                   ad.fullScreenContentCallback = FullScreenContentCallback(
                     onAdShowedFullScreenContent: (ad) {
+                      interstitialAdState = AdState.SHOWING;
                       _pauseAppOpenAd();
                     },
                     onAdDismissedFullScreenContent: (ad) {
+                      interstitialAdState = AdState.DISMISSED;
                       _isInterstitialAdCoolingDown = true;
                       ad.dispose();
                       _resumeAppOpenAd();
                       _completeInterstitialAd();
                     },
+                    onAdFailedToShowFullScreenContent: (ad, error) {
+                      interstitialAdState = AdState.FAILED_TO_SHOW;
+                    },
                   );
                   ad.show();
                 },
-                onAdFailedToLoad: (error) => throw Exception(error.message),
+                onAdFailedToLoad: (error) {
+                  interstitialAdState = AdState.FAILED_TO_LOAD;
+                  throw Exception(error.message);
+                },
               ),
         );
       }
@@ -261,6 +306,7 @@ class AutoAdmob {
         _appOpenAd?.show();
       } else {
         _createAppOpenCompleter();
+        appOpenAdState = AdState.REQUESTING;
         await AppOpenAd.load(
           adUnitId: config.appOpenAdUnitId,
           request: AdRequest(),
@@ -268,20 +314,29 @@ class AutoAdmob {
               callback ??
               AppOpenAdLoadCallback(
                 onAdLoaded: (ad) {
+                  appOpenAdState = AdState.LOADED;
                   ad.fullScreenContentCallback = FullScreenContentCallback(
                     onAdShowedFullScreenContent: (ad) {
+                      appOpenAdState = AdState.SHOWING;
                       _pauseInterstitialAd();
                     },
                     onAdDismissedFullScreenContent: (ad) {
+                      appOpenAdState = AdState.DISMISSED;
                       _isAppOpenAdCoolingDown = true;
                       ad.dispose();
                       _resumeInterstitialAd();
                       _completeAppOpenAd();
                     },
+                    onAdFailedToShowFullScreenContent: (ad, error) {
+                      appOpenAdState = AdState.FAILED_TO_SHOW;
+                    },
                   );
                   ad.show();
                 },
-                onAdFailedToLoad: (error) => throw Exception(error.message),
+                onAdFailedToLoad: (error) {
+                  appOpenAdState = AdState.FAILED_TO_LOAD;
+                  throw Exception(error.message);
+                },
               ),
         );
       }
@@ -302,5 +357,61 @@ class AutoAdmob {
     _interstitialAd = null;
     _appOpenAd = null;
     _isInitialized = false;
+    interstitialAdState = AdState.IDLE;
+    appOpenAdState = AdState.IDLE;
+  }
+
+  Future<bool> showAdAsync<T>({
+    Duration waitUntil = const Duration(seconds: 3),
+  }) {
+    Completer<bool> completer = Completer<bool>();
+
+    FullScreenContentCallback<T> defaultCallback = FullScreenContentCallback<T>(
+      onAdDismissedFullScreenContent: (ad) {
+        if (!completer.isCompleted) completer.complete(true);
+        Future.delayed(const Duration(seconds: 3), () {
+          (ad as dynamic).dispose();
+        });
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        if (!completer.isCompleted) completer.complete(false);
+      },
+    );
+
+    Future.delayed(waitUntil, () {
+      if (!completer.isCompleted) completer.complete(false);
+    });
+
+    if (T is AppOpenAd) {
+      AppOpenAd.load(
+        adUnitId: config.appOpenAdUnitId,
+        request: AdRequest(),
+        adLoadCallback: AppOpenAdLoadCallback(
+          onAdLoaded: (ad) {
+            ad.fullScreenContentCallback = defaultCallback as FullScreenContentCallback<AppOpenAd>;
+            ad.show();
+          },
+          onAdFailedToLoad: (error) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+        ),
+      );
+    } else {
+      InterstitialAd.load(
+        adUnitId: config.interstitialAdUnitId,
+        request: AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          onAdLoaded: (ad) {
+            ad.fullScreenContentCallback = defaultCallback as FullScreenContentCallback<InterstitialAd>;
+            ad.show();
+          },
+          onAdFailedToLoad: (error) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+        ),
+      );
+    }
+
+    return completer.future;
   }
 }

@@ -1,6 +1,6 @@
 name: flutter_auto_admob
 description: "An Admob auto ad to easily handle ad cycle and request."
-version: 0.0.9
+version: 0.10.0
 homepage: https://github.com/harry-odinson-369/flutter_auto_admob
 
 environment:
