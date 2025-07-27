@@ -45,6 +45,19 @@ class FlutterAutoAdmob {
   Function? onAppOpenAdLoaded;
   Function? onInterstitialAdLoaded;
 
+  void startListenOnAppLifeCycleStateChanged(
+    void Function(AppState state) stateChanged,
+  ) {
+    AppStateEventNotifier.startListening();
+    AppStateEventNotifier.appStateStream.forEach(stateChanged);
+    debugPrint("[AUTO ADMOB] started listening app life cycle state.");
+  }
+
+  void stopListenOnAppLifeCycleStateChanged() {
+    AppStateEventNotifier.stopListening();
+    debugPrint("[AUTO ADMOB] stopped listening app life cycle state.");
+  }
+
   /// This [initialize] function must be called once for the first time before the ads request.
   Future<InitializationStatus> initialize({
     required FlutterAutoAdmobConfig config,
