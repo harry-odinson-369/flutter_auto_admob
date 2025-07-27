@@ -26,7 +26,7 @@ class FlutterAutoAdmob {
   FlutterAutoAdmob._();
 
   static final FlutterAutoAdmob _instance = FlutterAutoAdmob._();
-  FlutterAutoAdmob get instance => _instance;
+  static FlutterAutoAdmob get instance => _instance;
 
   FlutterAutoAdmobConfig _config = FlutterAutoAdmobConfig();
 
