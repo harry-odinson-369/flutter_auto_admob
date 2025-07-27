@@ -1,417 +1,283 @@
-// ignore_for_file: constant_identifier_names
+// ignore_for_file: constant_identifier_names, unused_field
 
 import 'dart:async';
-import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_auto_admob/src/config.dart';
+import 'package:flutter_auto_admob/src/extension.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+enum AdType { APP_OPEN, INTERSTITIAL }
 
 enum AdState {
   IDLE,
+  COOLDOWN,
   REQUESTING,
   LOADED,
   SHOWING,
   DISMISSED,
+  IMPRESSION,
+  CLICKED,
   FAILED_TO_SHOW,
   FAILED_TO_LOAD,
 }
 
-class AutoAdmob {
-  AutoAdmobConfig config = AutoAdmobConfig();
-  bool _isInitialized = false;
+class FlutterAutoAdmob {
+  FlutterAutoAdmob._();
 
-  bool _isInterstitialAdCoolingDown = true;
-  bool _isAppOpenAdCoolingDown = true;
+  static final FlutterAutoAdmob _instance = FlutterAutoAdmob._();
+  FlutterAutoAdmob get instance => _instance;
 
-  InterstitialAd? _interstitialAd;
-  AppOpenAd? _appOpenAd;
+  FlutterAutoAdmobConfig _config = FlutterAutoAdmobConfig();
 
-  AdState interstitialAdState = AdState.IDLE;
-  AdState appOpenAdState = AdState.IDLE;
+  AdState _interstitialAdState = AdState.IDLE;
+  AdState get interstitialAdState => _interstitialAdState;
 
-  Timer? _interstitialAdTimer;
+  AdState _appOpenAdState = AdState.IDLE;
+  AdState get appOpenAdState => _appOpenAdState;
+
   Timer? _appOpenAdTimer;
+  Timer? _interstitialAdTimer;
 
-  Completer? _interstitialAdCompleter;
-  Completer? _appOpenAdCompleter;
+  AppOpenAd? _appOpenAd;
+  InterstitialAd? _interstitialAd;
 
-  Function? onInterstitialAdReady;
-  Function? onAppOpenAdReady;
-
-  Future initialize({AutoAdmobConfig? config}) async {
-    if (config != null) this.config = config;
-    assert(
-      this.config.interstitialCooldown.inSeconds >= 60,
-      "[AUTO ADMOB] the interstitial ad cool down should be equal or greater than 1 minute.",
-    );
-    assert(
-      this.config.appOpenAdCooldown.inSeconds >= 60,
-      "[AUTO ADMOB] the app open ad cool down should be equal or greater than 1 minute.",
-    );
-    await MobileAds.instance.initialize();
-    _isInitialized = true;
-    _interstitialAdTimer = Timer.periodic(
-      this.config.calculatedInterstitialAdCooldown,
-      _onInterstitialAdTimerExecuted,
-    );
-    _appOpenAdTimer = Timer.periodic(
-      this.config.calculatedAppOpenAdCooldown,
-      _onAppOpenAdTimerExecuted,
-    );
+  /// This [initialize] function must be called once for the first time before the ads request.
+  Future<InitializationStatus> initialize({
+    required FlutterAutoAdmobConfig config,
+  }) async {
+    _config = config;
+    if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      _appOpenAdState = AdState.COOLDOWN;
+      _appOpenAdTimer ??= Timer.periodic(
+        _config.calculatedAppOpenAdCooldown,
+        (t) => _onAppOpenAdTimerExecuted(),
+      );
+    }
+    if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      _interstitialAdState = AdState.COOLDOWN;
+      _interstitialAdTimer ??= Timer.periodic(
+        _config.calculatedInterstitialAdCooldown,
+        (t) => _onInterstitialAdTimerExecuted(),
+      );
+    }
+    return MobileAds.instance.initialize();
   }
 
-  static void startListenOnAppLifeCycleStateChanged(
-    void Function(AppState state) stateChanged,
+  FullScreenContentCallback<T> _defaultCallback<T>(
+    void Function(AdState state, T ad) onStateChanged,
   ) {
-    AppStateEventNotifier.startListening();
-    AppStateEventNotifier.appStateStream.forEach(stateChanged);
-    log("[AUTO ADMOB] started listening app life cycle state.");
-  }
-
-  static void stopListenOnAppLifeCycleStateChanged() {
-    AppStateEventNotifier.stopListening();
-    log("[AUTO ADMOB] stopped listening app life cycle state.");
-  }
-
-  void _pauseAppOpenAd() {
-    _isAppOpenAdCoolingDown = true;
-    _appOpenAdTimer?.cancel();
-    _appOpenAdTimer = null;
-  }
-
-  void _resumeAppOpenAd() {
-    Future.delayed(config.delayBetween, () {
-      _isAppOpenAdCoolingDown = false;
-      _appOpenAdTimer = Timer.periodic(
-        config.calculatedAppOpenAdCooldown,
-        _onAppOpenAdTimerExecuted,
-      );
-    });
-  }
-
-  void _pauseInterstitialAd() {
-    _isInterstitialAdCoolingDown = true;
-    _interstitialAdTimer?.cancel();
-    _interstitialAdTimer = null;
-  }
-
-  void _resumeInterstitialAd() {
-    Future.delayed(config.delayBetween, () {
-      _isInterstitialAdCoolingDown = false;
-      _interstitialAdTimer = Timer.periodic(
-        config.calculatedInterstitialAdCooldown,
-        _onInterstitialAdTimerExecuted,
-      );
-    });
-  }
-
-  void _createAppOpenCompleter() {
-    if (_appOpenAdCompleter?.isCompleted == false) {
-      _appOpenAdCompleter?.complete();
-    }
-    _appOpenAdCompleter = null;
-    _appOpenAdCompleter = Completer();
-  }
-
-  void _completeAppOpenAd() {
-    if (_appOpenAdCompleter?.isCompleted == false) {
-      _appOpenAdCompleter?.complete();
-    }
-  }
-
-  void _createInterstitialAdCompleter() {
-    if (_interstitialAdCompleter?.isCompleted == false) {
-      _interstitialAdCompleter?.complete();
-    }
-    _interstitialAdCompleter = null;
-    _interstitialAdCompleter = Completer();
-  }
-
-  void _completeInterstitialAd() {
-    if (_interstitialAdCompleter?.isCompleted == false) {
-      _interstitialAdCompleter?.complete();
-    }
-  }
-
-  void _onInterstitialAdTimerExecuted(Timer timer) {
-    if (config.interstitialAdLoadType == AutoAdmobLoadType.none) {
-      _isInterstitialAdCoolingDown = false;
-      onInterstitialAdReady?.call();
-    } else {
-      if (_interstitialAd == null) {
-        _createInterstitialAdCompleter();
-        interstitialAdState = AdState.REQUESTING;
-        InterstitialAd.load(
-          adUnitId: config.interstitialAdUnitId,
-          request: AdRequest(),
-          adLoadCallback: InterstitialAdLoadCallback(
-            onAdLoaded: (ad) {
-              interstitialAdState = AdState.LOADED;
-              _interstitialAd = ad;
-              _interstitialAd
-                  ?.fullScreenContentCallback = FullScreenContentCallback(
-                onAdShowedFullScreenContent: (ad) {
-                  interstitialAdState = AdState.SHOWING;
-                  _pauseAppOpenAd();
-                },
-                onAdDismissedFullScreenContent: (ad) {
-                  interstitialAdState = AdState.DISMISSED;
-                  _isInterstitialAdCoolingDown = true;
-                  Future.delayed(Duration(seconds: 3), () async {
-                    await _interstitialAd?.dispose();
-                    _interstitialAd = null;
-                  });
-                  _resumeAppOpenAd();
-                  _completeInterstitialAd();
-                },
-                onAdFailedToShowFullScreenContent: (ad, error) {
-                  interstitialAdState = AdState.FAILED_TO_SHOW;
-                },
-              );
-              log(
-                "[AUTO ADMOB] [Preload Ad] got a new interstitial ad and will be ready to show in next 15 seconds.",
-              );
-              Future.delayed(Duration(seconds: 15), () {
-                _isInterstitialAdCoolingDown = false;
-                onInterstitialAdReady?.call();
-              });
-            },
-            onAdFailedToLoad: (error) {
-              interstitialAdState = AdState.FAILED_TO_LOAD;
-              throw Exception(error.message);
-            },
-          ),
-        );
-      }
-    }
-  }
-
-  void _onAppOpenAdTimerExecuted(Timer timer) {
-    if (config.appOpenAdLoadType == AutoAdmobLoadType.none) {
-      _isAppOpenAdCoolingDown = false;
-      onAppOpenAdReady?.call();
-    } else {
-      if (_appOpenAd == null) {
-        _createAppOpenCompleter();
-        appOpenAdState = AdState.REQUESTING;
-        AppOpenAd.load(
-          adUnitId: config.appOpenAdUnitId,
-          request: AdRequest(),
-          adLoadCallback: AppOpenAdLoadCallback(
-            onAdLoaded: (ad) {
-              appOpenAdState = AdState.LOADED;
-              _appOpenAd = ad;
-              _appOpenAd?.fullScreenContentCallback = FullScreenContentCallback(
-                onAdShowedFullScreenContent: (ad) {
-                  appOpenAdState = AdState.SHOWING;
-                  _pauseInterstitialAd();
-                },
-                onAdDismissedFullScreenContent: (ad) {
-                  appOpenAdState = AdState.DISMISSED;
-                  _isAppOpenAdCoolingDown = true;
-                  Future.delayed(Duration(seconds: 3), () async {
-                    await _appOpenAd?.dispose();
-                    _appOpenAd = null;
-                  });
-                  _resumeInterstitialAd();
-                  _completeAppOpenAd();
-                },
-                onAdFailedToShowFullScreenContent: (ad, error) {
-                  appOpenAdState = AdState.FAILED_TO_SHOW;
-                },
-              );
-              log(
-                "[AUTO ADMOB] [Preload Ad] got a new app open ad and will be ready to show in next 15 seconds.",
-              );
-              Future.delayed(Duration(seconds: 15), () {
-                _isAppOpenAdCoolingDown = false;
-                onAppOpenAdReady?.call();
-              });
-            },
-            onAdFailedToLoad: (error) {
-              appOpenAdState = AdState.FAILED_TO_LOAD;
-              throw Exception(error.message);
-            },
-          ),
-        );
-      }
-    }
-  }
-
-  Future showInterstitialAd({
-    AdRequest? request,
-    InterstitialAdLoadCallback? callback,
-    bool waitUntil = true,
-  }) async {
-    assert(_isInitialized, "[AUTO ADMOB] you need to call initialize first!");
-    assert(
-      config.interstitialAdUnitId.isNotEmpty,
-      "[AUTO ADMOB] interstitial ad unit id must not empty or null.",
-    );
-    if (!_isInterstitialAdCoolingDown) {
-      if (config.interstitialAdLoadType == AutoAdmobLoadType.preload) {
-        _interstitialAd?.show();
-      } else {
-        _createInterstitialAdCompleter();
-        interstitialAdState = AdState.REQUESTING;
-        await InterstitialAd.load(
-          adUnitId: config.interstitialAdUnitId,
-          request: AdRequest(),
-          adLoadCallback:
-              callback ??
-              InterstitialAdLoadCallback(
-                onAdLoaded: (ad) {
-                  interstitialAdState = AdState.LOADED;
-                  ad.fullScreenContentCallback = FullScreenContentCallback(
-                    onAdShowedFullScreenContent: (ad) {
-                      interstitialAdState = AdState.SHOWING;
-                      _pauseAppOpenAd();
-                    },
-                    onAdDismissedFullScreenContent: (ad) {
-                      interstitialAdState = AdState.DISMISSED;
-                      _isInterstitialAdCoolingDown = true;
-                      ad.dispose();
-                      _resumeAppOpenAd();
-                      _completeInterstitialAd();
-                    },
-                    onAdFailedToShowFullScreenContent: (ad, error) {
-                      interstitialAdState = AdState.FAILED_TO_SHOW;
-                    },
-                  );
-                  ad.show();
-                },
-                onAdFailedToLoad: (error) {
-                  interstitialAdState = AdState.FAILED_TO_LOAD;
-                  throw Exception(error.message);
-                },
-              ),
-        );
-      }
-    }
-    if (waitUntil) return _interstitialAdCompleter?.future;
-  }
-
-  Future showAppOpenAd({
-    AdRequest? request,
-    AppOpenAdLoadCallback? callback,
-    bool waitUntil = true,
-  }) async {
-    assert(_isInitialized, "[AUTO ADMOB] you need to call initialize first!");
-    assert(
-      config.appOpenAdUnitId.isNotEmpty,
-      "[AUTO ADMOB] app open ad unit id must not empty or null.",
-    );
-    if (!_isAppOpenAdCoolingDown) {
-      if (config.appOpenAdLoadType == AutoAdmobLoadType.preload) {
-        _appOpenAd?.show();
-      } else {
-        _createAppOpenCompleter();
-        appOpenAdState = AdState.REQUESTING;
-        await AppOpenAd.load(
-          adUnitId: config.appOpenAdUnitId,
-          request: AdRequest(),
-          adLoadCallback:
-              callback ??
-              AppOpenAdLoadCallback(
-                onAdLoaded: (ad) {
-                  appOpenAdState = AdState.LOADED;
-                  ad.fullScreenContentCallback = FullScreenContentCallback(
-                    onAdShowedFullScreenContent: (ad) {
-                      appOpenAdState = AdState.SHOWING;
-                      _pauseInterstitialAd();
-                    },
-                    onAdDismissedFullScreenContent: (ad) {
-                      appOpenAdState = AdState.DISMISSED;
-                      _isAppOpenAdCoolingDown = true;
-                      ad.dispose();
-                      _resumeInterstitialAd();
-                      _completeAppOpenAd();
-                    },
-                    onAdFailedToShowFullScreenContent: (ad, error) {
-                      appOpenAdState = AdState.FAILED_TO_SHOW;
-                    },
-                  );
-                  ad.show();
-                },
-                onAdFailedToLoad: (error) {
-                  appOpenAdState = AdState.FAILED_TO_LOAD;
-                  throw Exception(error.message);
-                },
-              ),
-        );
-      }
-    }
-    if (waitUntil) return _appOpenAdCompleter?.future;
-  }
-
-  /// Cancel all auto ad and will require to call initialize again.
-  Future destroy() async {
-    _interstitialAdTimer?.cancel();
-    _appOpenAdTimer?.cancel();
-    _interstitialAdTimer = null;
-    _appOpenAdTimer = null;
-    _isInterstitialAdCoolingDown = true;
-    _isAppOpenAdCoolingDown = true;
-    await _interstitialAd?.dispose();
-    await _appOpenAd?.dispose();
-    _interstitialAd = null;
-    _appOpenAd = null;
-    _isInitialized = false;
-    interstitialAdState = AdState.IDLE;
-    appOpenAdState = AdState.IDLE;
-  }
-
-  Future<bool> showAdAsync<T>({
-    Duration waitUntil = const Duration(seconds: 3),
-  }) {
-    Completer<bool> completer = Completer<bool>();
-
-    FullScreenContentCallback<T> defaultCallback = FullScreenContentCallback<T>(
+    return FullScreenContentCallback<T>(
+      onAdShowedFullScreenContent: (ad) {
+        onStateChanged(AdState.SHOWING, ad);
+      },
       onAdDismissedFullScreenContent: (ad) {
-        if (!completer.isCompleted) completer.complete(true);
-        Future.delayed(const Duration(seconds: 3), () {
-          (ad as dynamic).dispose();
-        });
+        onStateChanged(AdState.DISMISSED, ad);
       },
-      onAdFailedToShowFullScreenContent: (ad, error) {
-        if (!completer.isCompleted) completer.complete(false);
+      onAdClicked: (ad) {
+        onStateChanged(AdState.CLICKED, ad);
+      },
+      onAdImpression: (ad) {
+        onStateChanged(AdState.IMPRESSION, ad);
+      },
+      onAdFailedToShowFullScreenContent: (ad, err1) {
+        onStateChanged(AdState.FAILED_TO_SHOW, ad);
       },
     );
+  }
 
-    Future.delayed(waitUntil, () {
-      if (!completer.isCompleted) completer.complete(false);
+  // Interstitial Ad Section
+
+  /// [useAsync] set to true if you want to wait until user close the ad.
+  /// [force] set to true to force the ad request and show immediately as possible.
+  Future<bool> showInterstitialAd({
+    bool useAsync = false,
+    bool force = false,
+  }) async {
+    if (!_interstitialAdState.isCoolingDown && !_appOpenAdState.isShowing) {
+      Completer<bool> completer = Completer<bool>();
+      if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.none ||
+          force) {
+        var defCallback = _defaultCallback<InterstitialAd>((state, ad) {
+          if (state.isDismissed) {
+            completer.done(true);
+            resetCoolDownNonePreloadedInterstitialAd(ad);
+          } else if (state.isFailed) {
+            completer.done(false);
+            resetCoolDownNonePreloadedInterstitialAd(ad);
+          }
+        });
+        InterstitialAd? ad = await _requestInterstitialAd(
+          callback: defCallback,
+        );
+        ad?.show();
+      } else if (_config.interstitialAdLoadType ==
+          FlutterAutoAdmobLoadType.preload) {
+        _interstitialAd?.show();
+        while (true) {
+          if (_interstitialAdState.isDismissed) {
+            completer.done(true);
+            break;
+          } else if (_interstitialAdState.isFailed) {
+            completer.done(false);
+            break;
+          }
+          await Future.delayed(Duration(seconds: 1));
+        }
+      }
+
+      if (useAsync) return completer.future;
+      return true;
+    }
+    return false;
+  }
+
+  void resetCoolDownNonePreloadedInterstitialAd(InterstitialAd ad) {
+    _interstitialAdState = AdState.COOLDOWN;
+    Future.delayed(_config.calculatedInterstitialAdCooldown, () {
+      _interstitialAdState = AdState.IDLE;
+      _interstitialAd = null;
+      ad.dispose();
     });
+  }
 
-    if (T is AppOpenAd) {
-      AppOpenAd.load(
-        adUnitId: config.appOpenAdUnitId,
-        request: AdRequest(),
-        adLoadCallback: AppOpenAdLoadCallback(
-          onAdLoaded: (ad) {
-            ad.fullScreenContentCallback = defaultCallback as FullScreenContentCallback<AppOpenAd>;
-            ad.show();
-          },
-          onAdFailedToLoad: (error) {
-            if (!completer.isCompleted) completer.complete(false);
-          },
-        ),
-      );
-    } else {
-      InterstitialAd.load(
-        adUnitId: config.interstitialAdUnitId,
-        request: AdRequest(),
-        adLoadCallback: InterstitialAdLoadCallback(
-          onAdLoaded: (ad) {
-            ad.fullScreenContentCallback = defaultCallback as FullScreenContentCallback<InterstitialAd>;
-            ad.show();
-          },
-          onAdFailedToLoad: (error) {
-            if (!completer.isCompleted) completer.complete(false);
-          },
-        ),
+  void _onInterstitialAdTimerExecuted() async {
+    var defCallback = _defaultCallback<InterstitialAd>((state, ad) {
+      if (state.isDismissed) {
+        resetCoolDownNonePreloadedInterstitialAd(ad);
+      } else if (state.isFailed) {
+        resetCoolDownNonePreloadedInterstitialAd(ad);
+      }
+    });
+    _interstitialAd ??= await _requestInterstitialAd(callback: defCallback);
+    if (_interstitialAd != null) {
+      debugPrint(
+        "[INTERSTITIAL] Preloaded INTERSTITIAL ad is ready to show in the next 15 seconds.",
       );
     }
+  }
 
+  Future<InterstitialAd?> _requestInterstitialAd({
+    FullScreenContentCallback<InterstitialAd>? callback,
+  }) async {
+    Completer<InterstitialAd?> completer = Completer<InterstitialAd?>();
+    _interstitialAdState = AdState.REQUESTING;
+    InterstitialAd.load(
+      adUnitId: _config.interstitialAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          var defCallback = _defaultCallback<InterstitialAd>(
+            (state, ad) => _interstitialAdState = state,
+          );
+          ad.fullScreenContentCallback = callback ?? defCallback;
+          completer.done(ad);
+          _interstitialAdState = AdState.LOADED;
+        },
+        onAdFailedToLoad: (error) {
+          completer.done();
+          _interstitialAdState = AdState.FAILED_TO_LOAD;
+        },
+      ),
+    );
     return completer.future;
   }
+
+  // End of Interstitial Ad Section
+
+  // App Open Ad Section
+
+  /// [useAsync] set to true if you want to wait until user close the ad.
+  /// [force] set to true to force the ad request and show immediately as possible.
+  Future<bool> showAppOpenAd({
+    bool useAsync = false,
+    bool force = false,
+  }) async {
+    if (!_appOpenAdState.isCoolingDown && !_interstitialAdState.isShowing) {
+      Completer<bool> completer = Completer<bool>();
+      if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.none || force) {
+        var defCallback = _defaultCallback<AppOpenAd>((state, ad) {
+          if (state.isDismissed) {
+            completer.done(true);
+            resetCoolDownNonePreloadedAppOpenAd(ad);
+          } else if (state.isFailed) {
+            completer.done(false);
+            resetCoolDownNonePreloadedAppOpenAd(ad);
+          }
+        });
+        AppOpenAd? ad = await _requestAppOpenAd(callback: defCallback);
+        ad?.show();
+      } else if (_config.appOpenAdLoadType ==
+          FlutterAutoAdmobLoadType.preload) {
+        _appOpenAd?.show();
+        while (true) {
+          if (_appOpenAdState.isDismissed) {
+            completer.done(true);
+            break;
+          } else if (_appOpenAdState.isFailed) {
+            completer.done(false);
+            break;
+          }
+          await Future.delayed(Duration(seconds: 1));
+        }
+      }
+
+      if (useAsync) return completer.future;
+      return true;
+    }
+    return false;
+  }
+
+  void resetCoolDownNonePreloadedAppOpenAd(AppOpenAd ad) {
+    _appOpenAdState = AdState.COOLDOWN;
+    Future.delayed(_config.calculatedAppOpenAdCooldown, () {
+      _appOpenAdState = AdState.IDLE;
+      _appOpenAd = null;
+      ad.dispose();
+    });
+  }
+
+  void _onAppOpenAdTimerExecuted() async {
+    var defCallback = _defaultCallback<AppOpenAd>((state, ad) {
+      if (state.isDismissed) {
+        resetCoolDownNonePreloadedAppOpenAd(ad);
+      } else if (state.isFailed) {
+        resetCoolDownNonePreloadedAppOpenAd(ad);
+      }
+    });
+    _appOpenAd ??= await _requestAppOpenAd(callback: defCallback);
+    if (_appOpenAd != null) {
+      debugPrint(
+        "[APP OPEN] Preloaded APP OPEN ad is ready to show in the next 15 seconds.",
+      );
+    }
+  }
+
+  Future<AppOpenAd?> _requestAppOpenAd({
+    FullScreenContentCallback<AppOpenAd>? callback,
+  }) async {
+    Completer<AppOpenAd?> completer = Completer<AppOpenAd?>();
+    _appOpenAdState = AdState.REQUESTING;
+    AppOpenAd.load(
+      adUnitId: _config.appOpenAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) {
+          var defCallback = _defaultCallback<AppOpenAd>(
+            (state, ad) => _appOpenAdState = state,
+          );
+          ad.fullScreenContentCallback = callback ?? defCallback;
+          completer.done(ad);
+          _appOpenAdState = AdState.LOADED;
+        },
+        onAdFailedToLoad: (error) {
+          completer.done();
+          _appOpenAdState = AdState.FAILED_TO_LOAD;
+        },
+      ),
+    );
+    return completer.future;
+  }
+
+  // End of App Open Ad Section
 }

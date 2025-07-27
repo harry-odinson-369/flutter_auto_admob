@@ -1,5 +1,7 @@
-export './src/flutter_auto_admob.dart';
-export './src/config.dart';
+export 'src/flutter_auto_admob.dart';
+export 'src/config.dart';
+export 'src/extension.dart';
+
 export 'package:google_mobile_ads/google_mobile_ads.dart'
     show
         InterstitialAdLoadCallback,
