@@ -42,25 +42,24 @@ class FlutterAutoAdmob {
   AppOpenAd? _appOpenAd;
   InterstitialAd? _interstitialAd;
 
+  Function? onAppOpenAdLoaded;
+  Function? onInterstitialAdLoaded;
+
   /// This [initialize] function must be called once for the first time before the ads request.
   Future<InitializationStatus> initialize({
     required FlutterAutoAdmobConfig config,
   }) async {
     _config = config;
-    if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
-      _appOpenAdState = AdState.COOLDOWN;
-      _appOpenAdTimer ??= Timer.periodic(
-        _config.calculatedAppOpenAdCooldown,
-        (t) => _onAppOpenAdTimerExecuted(),
-      );
-    }
-    if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.preload) {
-      _interstitialAdState = AdState.COOLDOWN;
-      _interstitialAdTimer ??= Timer.periodic(
-        _config.calculatedInterstitialAdCooldown,
-        (t) => _onInterstitialAdTimerExecuted(),
-      );
-    }
+    _appOpenAdState = AdState.COOLDOWN;
+    _appOpenAdTimer ??= Timer.periodic(
+      _config.calculatedAppOpenAdCooldown,
+      (t) => _onAppOpenAdTimerExecuted(),
+    );
+    _interstitialAdState = AdState.COOLDOWN;
+    _interstitialAdTimer ??= Timer.periodic(
+      _config.calculatedInterstitialAdCooldown,
+      (t) => _onInterstitialAdTimerExecuted(),
+    );
     return MobileAds.instance.initialize();
   }
 
@@ -134,7 +133,7 @@ class FlutterAutoAdmob {
 
   void resetCoolDownNonePreloadedInterstitialAd(InterstitialAd ad) {
     _interstitialAdState = AdState.COOLDOWN;
-    Future.delayed(_config.calculatedInterstitialAdCooldown, () {
+    Future.delayed(Duration(seconds: 6), () {
       _interstitialAdState = AdState.IDLE;
       _interstitialAd = null;
       ad.dispose();
@@ -142,18 +141,26 @@ class FlutterAutoAdmob {
   }
 
   void _onInterstitialAdTimerExecuted() async {
-    var defCallback = _defaultCallback<InterstitialAd>((state, ad) {
-      if (state.isDismissed) {
-        resetCoolDownNonePreloadedInterstitialAd(ad);
-      } else if (state.isFailed) {
-        resetCoolDownNonePreloadedInterstitialAd(ad);
+    if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      var defCallback = _defaultCallback<InterstitialAd>((state, ad) {
+        if (state.isDismissed) {
+          resetCoolDownNonePreloadedInterstitialAd(ad);
+        } else if (state.isFailed) {
+          resetCoolDownNonePreloadedInterstitialAd(ad);
+        }
+      });
+      _interstitialAd ??= await _requestInterstitialAd(callback: defCallback);
+      if (_interstitialAd != null) {
+        debugPrint(
+          "[INTERSTITIAL] Preloaded INTERSTITIAL ad is ready to show in the next 15 seconds.",
+        );
+        Future.delayed(const Duration(seconds: 15), () {
+          onInterstitialAdLoaded?.call();
+        });
       }
-    });
-    _interstitialAd ??= await _requestInterstitialAd(callback: defCallback);
-    if (_interstitialAd != null) {
-      debugPrint(
-        "[INTERSTITIAL] Preloaded INTERSTITIAL ad is ready to show in the next 15 seconds.",
-      );
+    } else {
+      _interstitialAdState = AdState.IDLE;
+      onInterstitialAdLoaded?.call();
     }
   }
 
@@ -230,7 +237,7 @@ class FlutterAutoAdmob {
 
   void resetCoolDownNonePreloadedAppOpenAd(AppOpenAd ad) {
     _appOpenAdState = AdState.COOLDOWN;
-    Future.delayed(_config.calculatedAppOpenAdCooldown, () {
+    Future.delayed(Duration(seconds: 6), () {
       _appOpenAdState = AdState.IDLE;
       _appOpenAd = null;
       ad.dispose();
@@ -238,18 +245,26 @@ class FlutterAutoAdmob {
   }
 
   void _onAppOpenAdTimerExecuted() async {
-    var defCallback = _defaultCallback<AppOpenAd>((state, ad) {
-      if (state.isDismissed) {
-        resetCoolDownNonePreloadedAppOpenAd(ad);
-      } else if (state.isFailed) {
-        resetCoolDownNonePreloadedAppOpenAd(ad);
+    if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      var defCallback = _defaultCallback<AppOpenAd>((state, ad) {
+        if (state.isDismissed) {
+          resetCoolDownNonePreloadedAppOpenAd(ad);
+        } else if (state.isFailed) {
+          resetCoolDownNonePreloadedAppOpenAd(ad);
+        }
+      });
+      _appOpenAd ??= await _requestAppOpenAd(callback: defCallback);
+      if (_appOpenAd != null) {
+        debugPrint(
+          "[APP OPEN] Preloaded APP OPEN ad is ready to show in the next 15 seconds.",
+        );
+        Future.delayed(const Duration(seconds: 15), () {
+          onAppOpenAdLoaded?.call();
+        });
       }
-    });
-    _appOpenAd ??= await _requestAppOpenAd(callback: defCallback);
-    if (_appOpenAd != null) {
-      debugPrint(
-        "[APP OPEN] Preloaded APP OPEN ad is ready to show in the next 15 seconds.",
-      );
+    } else {
+      _appOpenAdState = AdState.IDLE;
+      onAppOpenAdLoaded?.call();
     }
   }
 
