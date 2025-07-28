@@ -1,0 +1,164 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_auto_admob/src/ads/interstitial.dart';
+import 'package:flutter_auto_admob/src/config.dart';
+import 'package:flutter_auto_admob/src/extension.dart';
+import 'package:flutter_auto_admob/src/flutter_auto_admob.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+class AppOpenAdApi {
+  AppOpenAdApi._();
+
+  FlutterAutoAdmobConfig _config = FlutterAutoAdmobConfig();
+
+  static final AppOpenAdApi _instance = AppOpenAdApi._();
+  static AppOpenAdApi get instance => _instance;
+
+  final ValueNotifier<AdState> _state = ValueNotifier(AdState.IDLE);
+  ValueNotifier<AdState> get state => _state;
+
+  Timer? _timer;
+
+  AppOpenAd? _ad;
+
+  Function? onLoadedCallback;
+
+  void startListenOnAppLifeCycleStateChanged(
+    void Function(AppState state) stateChanged,
+  ) {
+    AppStateEventNotifier.startListening();
+    AppStateEventNotifier.appStateStream.forEach(stateChanged);
+    debugPrint("[AUTO ADMOB] started listening app life cycle state.");
+  }
+
+  void stopListenOnAppLifeCycleStateChanged() {
+    AppStateEventNotifier.stopListening();
+    debugPrint("[AUTO ADMOB] stopped listening app life cycle state.");
+  }
+
+  void configure(FlutterAutoAdmobConfig config) {
+    _config = config;
+    _state.value = AdState.COOLDOWN;
+    _timer ??= Timer.periodic(
+      _config.calculatedAppOpenAdCooldown,
+      (t) => _onTimerExecuted(),
+    );
+  }
+
+  /// [useAsync] set to true if you want to wait until user close the ad.
+  /// [force] set to true to force the ad request and show immediately as possible.
+  Future<bool> show({bool useAsync = false, bool force = false}) async {
+    if (!_state.value.isCoolingDown &&
+        !InterstitialAdApi.instance.state.value.isShowing) {
+      Completer<bool> completer = Completer<bool>();
+      if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.none || force) {
+        _state.addListener(() {
+          if (_state.value.isDismissed) {
+            completer.done(true);
+            _resetCoolDownNonePreloadedAd();
+          } else if (_state.value.isFailed) {
+            completer.done(false);
+            _resetCoolDownNonePreloadedAd();
+          }
+        });
+        _ad = await _requestAd();
+        _ad?.show();
+      } else if (_config.appOpenAdLoadType ==
+          FlutterAutoAdmobLoadType.preload) {
+        _ad?.show();
+        while (true) {
+          if (_state.value.isDismissed) {
+            completer.done(true);
+            break;
+          } else if (_state.value.isFailed) {
+            completer.done(false);
+            break;
+          }
+          await Future.delayed(Duration(seconds: 1));
+        }
+      }
+
+      if (useAsync) return completer.future;
+      return true;
+    }
+    return false;
+  }
+
+  void _resetCoolDownNonePreloadedAd() {
+    _state.value = AdState.COOLDOWN;
+    Future.delayed(Duration(seconds: 6), () {
+      _state.value = AdState.IDLE;
+      _state.removeListener(_stateListener);
+      _ad = null;
+      _ad?.dispose();
+    });
+  }
+
+  void _stateListener() {
+    if (_state.value.isDismissed) {
+      _resetCoolDownNonePreloadedAd();
+    } else if (_state.value.isFailed) {
+      _resetCoolDownNonePreloadedAd();
+    }
+  }
+
+  void _onTimerExecuted() async {
+    if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      _state.addListener(_stateListener);
+      _ad ??= await _requestAd();
+      if (_ad != null) {
+        debugPrint(
+          "[APP OPEN] Preloaded APP OPEN ad is ready to show in the next 15 seconds.",
+        );
+        Future.delayed(const Duration(seconds: 15), () {
+          onLoadedCallback?.call();
+        });
+      }
+    } else {
+      _state.value = AdState.IDLE;
+      onLoadedCallback?.call();
+    }
+  }
+
+  Future<AppOpenAd?> _requestAd() async {
+    Completer<AppOpenAd?> completer = Completer<AppOpenAd?>();
+    _state.value = AdState.REQUESTING;
+    AppOpenAd.load(
+      adUnitId: _config.appOpenAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) {
+          ad.fullScreenContentCallback = _fullscreenCallback;
+          completer.done(ad);
+          _state.value = AdState.LOADED;
+        },
+        onAdFailedToLoad: (error) {
+          completer.done();
+          _state.value = AdState.FAILED_TO_LOAD;
+        },
+      ),
+    );
+    return completer.future;
+  }
+
+  FullScreenContentCallback<AppOpenAd> get _fullscreenCallback {
+    return FullScreenContentCallback<AppOpenAd>(
+      onAdShowedFullScreenContent: (ad) {
+        _state.value = AdState.SHOWING;
+      },
+      onAdDismissedFullScreenContent: (ad) {
+        _state.value = AdState.DISMISSED;
+      },
+      onAdClicked: (ad) {
+        _state.value = AdState.CLICKED;
+      },
+      onAdImpression: (ad) {
+        _state.value = AdState.IMPRESSION;
+      },
+      onAdFailedToShowFullScreenContent: (ad, err1) {
+        _state.value = AdState.FAILED_TO_SHOW;
+      },
+    );
+  }
+}
