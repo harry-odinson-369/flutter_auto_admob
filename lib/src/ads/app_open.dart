@@ -23,6 +23,9 @@ class AppOpenAdApi {
   AppOpenAd? _ad;
 
   Function? onLoadedCallback;
+  Function? onClosedCallback;
+
+  bool get isCanShowAd => !state.value.isCoolingDown && !state.value.isShowing && !InterstitialAdApi.instance.state.value.isShowing;
 
   void startListenOnAppLifeCycleStateChanged(
     void Function(AppState state) stateChanged,
@@ -63,42 +66,17 @@ class AppOpenAdApi {
 
   /// [useAsync] set to true if you want to wait until user close the ad.
   /// [force] set to true to force the ad request and show immediately as possible.
-  Future<bool> show({bool useAsync = false, bool force = false}) async {
-    if (!_state.value.isCoolingDown &&
-        !InterstitialAdApi.instance.state.value.isShowing) {
-      Completer<bool> completer = Completer<bool>();
-      if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.none || force) {
-        _state.addListener(() {
-          if (_state.value.isDismissed) {
-            completer.done(true);
-            _resetCoolDownNonePreloadedAd();
-          } else if (_state.value.isFailed) {
-            completer.done(false);
-            _resetCoolDownNonePreloadedAd();
-          }
-        });
-        _ad = await _requestAd();
+  void show({bool useAsync = false, bool force = false}) async {
+    if (isCanShowAd || force) {
+      if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.none) {
+        _state.addListener(_stateListener);
+        _ad = await requestAd();
         _ad?.show();
-      } else if (_config.appOpenAdLoadType ==
-          FlutterAutoAdmobLoadType.preload) {
+      } else if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
         _ad?.show();
-        while (true) {
-          if (_state.value.isDismissed) {
-            completer.done(true);
-            break;
-          } else if (_state.value.isFailed) {
-            completer.done(false);
-            break;
-          }
-          await Future.delayed(Duration(seconds: 1));
-        }
       }
-
-      if (useAsync) return completer.future;
-      return true;
     } else {
       debugPrint("[APP OPEN] The APP OPEN ad is in cooldown!");
-      return false;
     }
   }
 
@@ -123,7 +101,7 @@ class AppOpenAdApi {
   void _onTimerExecuted() async {
     if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
       _state.addListener(_stateListener);
-      _ad ??= await _requestAd();
+      _ad ??= await requestAd();
       if (_ad != null) {
         debugPrint(
           "[APP OPEN] Preloaded APP OPEN ad is ready to show in the next 15 seconds.",
@@ -138,7 +116,7 @@ class AppOpenAdApi {
     }
   }
 
-  Future<AppOpenAd?> _requestAd() async {
+  Future<AppOpenAd?> requestAd([FullScreenContentCallback<AppOpenAd>? cb]) async {
     Completer<AppOpenAd?> completer = Completer<AppOpenAd?>();
     _state.value = AdState.REQUESTING;
     AppOpenAd.load(
@@ -146,7 +124,7 @@ class AppOpenAdApi {
       request: const AdRequest(),
       adLoadCallback: AppOpenAdLoadCallback(
         onAdLoaded: (ad) {
-          ad.fullScreenContentCallback = _fullscreenCallback;
+          ad.fullScreenContentCallback = cb ?? _fullscreenCallback;
           completer.done(ad);
           _state.value = AdState.LOADED;
         },
@@ -166,6 +144,7 @@ class AppOpenAdApi {
       },
       onAdDismissedFullScreenContent: (ad) {
         _state.value = AdState.DISMISSED;
+        onClosedCallback?.call();
         InterstitialAdApi.instance.cooldown();
       },
       onAdClicked: (ad) {

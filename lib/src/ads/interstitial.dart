@@ -23,6 +23,9 @@ class InterstitialAdApi {
   InterstitialAd? _ad;
 
   Function? onLoadedCallback;
+  Function? onClosedCallback;
+
+  bool get isCanShowAd => !_state.value.isCoolingDown && !_state.value.isShowing && !AppOpenAdApi.instance.state.value.isShowing;
 
   void configure(FlutterAutoAdmobConfig config) {
     _config = config;
@@ -50,43 +53,17 @@ class InterstitialAdApi {
 
   /// [useAsync] set to true if you want to wait until user close the ad.
   /// [force] set to true to force the ad request and show immediately as possible.
-  Future<bool> show({bool useAsync = false, bool force = false}) async {
-    if (!_state.value.isCoolingDown &&
-        !AppOpenAdApi.instance.state.value.isShowing) {
-      Completer<bool> completer = Completer<bool>();
-      if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.none ||
-          force) {
-        _state.addListener(() {
-          if (_state.value.isDismissed) {
-            completer.done(true);
-            _resetCoolDownNonePreloadedAd();
-          } else if (_state.value.isFailed) {
-            completer.done(false);
-            _resetCoolDownNonePreloadedAd();
-          }
-        });
-        _ad = await _requestAd();
+  void show({bool useAsync = false, bool force = false}) async {
+    if (isCanShowAd || force) {
+      if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.none || force) {
+        _state.addListener(_stateListener);
+        _ad = await requestAd();
         _ad?.show();
-      } else if (_config.interstitialAdLoadType ==
-          FlutterAutoAdmobLoadType.preload) {
+      } else if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.preload) {
         _ad?.show();
-        while (true) {
-          if (_state.value.isDismissed) {
-            completer.done(true);
-            break;
-          } else if (_state.value.isFailed) {
-            completer.done(false);
-            break;
-          }
-          await Future.delayed(Duration(seconds: 1));
-        }
       }
-
-      if (useAsync) return completer.future;
-      return true;
     } else {
       debugPrint("[INTERSTITIAL] The INTERSTITIAL ad is in cooldown!");
-      return false;
     }
   }
 
@@ -111,7 +88,7 @@ class InterstitialAdApi {
   void _onTimerExecuted() async {
     if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.preload) {
       _state.addListener(_stateListener);
-      _ad ??= await _requestAd();
+      _ad ??= await requestAd();
       if (_ad != null) {
         debugPrint(
           "[INTERSTITIAL] Preloaded INTERSTITIAL ad is ready to show in the next 15 seconds.",
@@ -126,7 +103,7 @@ class InterstitialAdApi {
     }
   }
 
-  Future<InterstitialAd?> _requestAd() async {
+  Future<InterstitialAd?> requestAd([FullScreenContentCallback<InterstitialAd>? cb]) async {
     Completer<InterstitialAd?> completer = Completer<InterstitialAd?>();
     _state.value = AdState.REQUESTING;
     InterstitialAd.load(
@@ -134,7 +111,7 @@ class InterstitialAdApi {
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
-          ad.fullScreenContentCallback = _fullscreenCallback;
+          ad.fullScreenContentCallback = cb ?? _fullscreenCallback;
           completer.done(ad);
           _state.value = AdState.LOADED;
         },
@@ -154,6 +131,7 @@ class InterstitialAdApi {
       },
       onAdDismissedFullScreenContent: (ad) {
         _state.value = AdState.DISMISSED;
+        onClosedCallback?.call();
         AppOpenAdApi.instance.cooldown();
       },
       onAdClicked: (ad) {
