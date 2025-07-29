@@ -114,7 +114,7 @@ class InterstitialAdApi {
       _ad ??= await _requestAd();
       if (_ad != null) {
         debugPrint(
-          "[APP OPEN] Preloaded APP OPEN ad is ready to show in the next 15 seconds.",
+          "[INTERSTITIAL] Preloaded INTERSTITIAL ad is ready to show in the next 15 seconds.",
         );
         Future.delayed(const Duration(seconds: 15), () {
           onLoadedCallback?.call();
