@@ -29,12 +29,12 @@ class AppOpenAdApi {
   ) {
     AppStateEventNotifier.startListening();
     AppStateEventNotifier.appStateStream.forEach(stateChanged);
-    debugPrint("[AUTO ADMOB] started listening app life cycle state.");
+    debugPrint("[APP OPEN] started listening app life cycle state.");
   }
 
   void stopListenOnAppLifeCycleStateChanged() {
     AppStateEventNotifier.stopListening();
-    debugPrint("[AUTO ADMOB] stopped listening app life cycle state.");
+    debugPrint("[APP OPEN] stopped listening app life cycle state.");
   }
 
   void configure(FlutterAutoAdmobConfig config) {
@@ -44,6 +44,21 @@ class AppOpenAdApi {
       _config.calculatedAppOpenAdCooldown,
       (t) => _onTimerExecuted(),
     );
+  }
+
+  void cooldown([Duration? duration]) async {
+    AdState backupState = AdState.values.firstWhere((e) => e == _state.value);
+    _state.value = AdState.COOLDOWN;
+    _timer?.cancel();
+    _timer = null;
+    var dur = duration ?? _config.calculatedAppOpenAdCooldown;
+    Future.delayed(dur, () {
+      _state.value = backupState;
+      _timer = Timer.periodic(
+        _config.calculatedAppOpenAdCooldown,
+        (t) => _onTimerExecuted(),
+      );
+    });
   }
 
   /// [useAsync] set to true if you want to wait until user close the ad.
@@ -81,8 +96,10 @@ class AppOpenAdApi {
 
       if (useAsync) return completer.future;
       return true;
+    } else {
+      debugPrint("[APP OPEN] The APP OPEN ad is in cooldown!");
+      return false;
     }
-    return false;
   }
 
   void _resetCoolDownNonePreloadedAd() {
@@ -149,6 +166,7 @@ class AppOpenAdApi {
       },
       onAdDismissedFullScreenContent: (ad) {
         _state.value = AdState.DISMISSED;
+        InterstitialAdApi.instance.cooldown();
       },
       onAdClicked: (ad) {
         _state.value = AdState.CLICKED;

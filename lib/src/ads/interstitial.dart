@@ -33,6 +33,21 @@ class InterstitialAdApi {
     );
   }
 
+  void cooldown([Duration? duration]) async {
+    AdState backupState = AdState.values.firstWhere((e) => e == _state.value);
+    _state.value = AdState.COOLDOWN;
+    _timer?.cancel();
+    _timer = null;
+    var dur = duration ?? _config.calculatedInterstitialAdCooldown;
+    Future.delayed(dur, () {
+      _state.value = backupState;
+      _timer = Timer.periodic(
+        _config.calculatedInterstitialAdCooldown,
+        (t) => _onTimerExecuted(),
+      );
+    });
+  }
+
   /// [useAsync] set to true if you want to wait until user close the ad.
   /// [force] set to true to force the ad request and show immediately as possible.
   Future<bool> show({bool useAsync = false, bool force = false}) async {
@@ -44,10 +59,10 @@ class InterstitialAdApi {
         _state.addListener(() {
           if (_state.value.isDismissed) {
             completer.done(true);
-            resetCoolDownNonePreloadedAd();
+            _resetCoolDownNonePreloadedAd();
           } else if (_state.value.isFailed) {
             completer.done(false);
-            resetCoolDownNonePreloadedAd();
+            _resetCoolDownNonePreloadedAd();
           }
         });
         _ad = await _requestAd();
@@ -69,11 +84,13 @@ class InterstitialAdApi {
 
       if (useAsync) return completer.future;
       return true;
+    } else {
+      debugPrint("[INTERSTITIAL] The INTERSTITIAL ad is in cooldown!");
+      return false;
     }
-    return false;
   }
 
-  void resetCoolDownNonePreloadedAd() {
+  void _resetCoolDownNonePreloadedAd() {
     _state.value = AdState.COOLDOWN;
     Future.delayed(Duration(seconds: 6), () {
       _state.value = AdState.IDLE;
@@ -85,9 +102,9 @@ class InterstitialAdApi {
 
   void _stateListener() {
     if (_state.value.isDismissed) {
-      resetCoolDownNonePreloadedAd();
+      _resetCoolDownNonePreloadedAd();
     } else if (_state.value.isFailed) {
-      resetCoolDownNonePreloadedAd();
+      _resetCoolDownNonePreloadedAd();
     }
   }
 
@@ -137,6 +154,7 @@ class InterstitialAdApi {
       },
       onAdDismissedFullScreenContent: (ad) {
         _state.value = AdState.DISMISSED;
+        AppOpenAdApi.instance.cooldown();
       },
       onAdClicked: (ad) {
         _state.value = AdState.CLICKED;
