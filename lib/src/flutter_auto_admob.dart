@@ -23,11 +23,12 @@ enum AdState {
 }
 
 class FlutterAutoAdmob {
-  FlutterAutoAdmob._();
+  FlutterAutoAdmob();
+  FlutterAutoAdmob._singleton();
 
   FlutterAutoAdmobConfig config = FlutterAutoAdmobConfig();
 
-  static final FlutterAutoAdmob _ads = FlutterAutoAdmob._();
+  static final FlutterAutoAdmob _ads = FlutterAutoAdmob._singleton();
   static FlutterAutoAdmob get ads => _ads;
 
   AppOpenAdApi get appOpen => AppOpenAdApi.instance;
