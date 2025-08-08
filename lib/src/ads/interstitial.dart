@@ -22,6 +22,8 @@ class InterstitialAdApi {
 
   InterstitialAd? _ad;
 
+  Function? onShowFailedCallback;
+  Function? onShowedCallback;
   Function? onLoadedCallback;
   Function? onClosedCallback;
 
@@ -128,6 +130,7 @@ class InterstitialAdApi {
     return FullScreenContentCallback<InterstitialAd>(
       onAdShowedFullScreenContent: (ad) {
         _state.value = AdState.SHOWING;
+        onShowedCallback?.call();
       },
       onAdDismissedFullScreenContent: (ad) {
         _state.value = AdState.DISMISSED;
@@ -142,6 +145,7 @@ class InterstitialAdApi {
       },
       onAdFailedToShowFullScreenContent: (ad, err1) {
         _state.value = AdState.FAILED_TO_SHOW;
+        onShowFailedCallback?.call();
       },
     );
   }

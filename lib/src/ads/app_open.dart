@@ -22,6 +22,8 @@ class AppOpenAdApi {
 
   AppOpenAd? _ad;
 
+  Function? onShowFailedCallback;
+  Function? onShowedCallback;
   Function? onLoadedCallback;
   Function? onClosedCallback;
 
@@ -141,6 +143,7 @@ class AppOpenAdApi {
     return FullScreenContentCallback<AppOpenAd>(
       onAdShowedFullScreenContent: (ad) {
         _state.value = AdState.SHOWING;
+        onShowedCallback?.call();
       },
       onAdDismissedFullScreenContent: (ad) {
         _state.value = AdState.DISMISSED;
@@ -155,6 +158,7 @@ class AppOpenAdApi {
       },
       onAdFailedToShowFullScreenContent: (ad, err1) {
         _state.value = AdState.FAILED_TO_SHOW;
+        onShowFailedCallback?.call();
       },
     );
   }
