@@ -8,11 +8,12 @@ import 'package:flutter_auto_admob/src/flutter_auto_admob.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class InterstitialAdApi {
-  InterstitialAdApi._();
+  InterstitialAdApi();
+  InterstitialAdApi._singleton();
 
   FlutterAutoAdmobConfig _config = FlutterAutoAdmobConfig();
 
-  static final InterstitialAdApi _instance = InterstitialAdApi._();
+  static final InterstitialAdApi _instance = InterstitialAdApi._singleton();
   static InterstitialAdApi get instance => _instance;
 
   final ValueNotifier<AdState> _state = ValueNotifier(AdState.IDLE);
@@ -27,7 +28,10 @@ class InterstitialAdApi {
   Function? onLoadedCallback;
   Function? onClosedCallback;
 
-  bool get isCanShowAd => !_state.value.isCoolingDown && !_state.value.isShowing && !AppOpenAdApi.instance.state.value.isShowing;
+  bool get isCanShowAd =>
+      !_state.value.isCoolingDown &&
+      !_state.value.isShowing &&
+      !AppOpenAdApi.instance.state.value.isShowing;
 
   void configure(FlutterAutoAdmobConfig config) {
     _config = config;
@@ -57,11 +61,13 @@ class InterstitialAdApi {
   /// [force] set to true to force the ad request and show immediately as possible.
   void show({bool useAsync = false, bool force = false}) async {
     if (isCanShowAd || force) {
-      if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.none || force) {
+      if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.none ||
+          force) {
         _state.addListener(_stateListener);
         _ad = await requestAd();
         _ad?.show();
-      } else if (_config.interstitialAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      } else if (_config.interstitialAdLoadType ==
+          FlutterAutoAdmobLoadType.preload) {
         _ad?.show();
       }
     } else {
@@ -105,7 +111,9 @@ class InterstitialAdApi {
     }
   }
 
-  Future<InterstitialAd?> requestAd([FullScreenContentCallback<InterstitialAd>? cb]) async {
+  Future<InterstitialAd?> requestAd([
+    FullScreenContentCallback<InterstitialAd>? cb,
+  ]) async {
     Completer<InterstitialAd?> completer = Completer<InterstitialAd?>();
     _state.value = AdState.REQUESTING;
     InterstitialAd.load(
@@ -148,5 +156,17 @@ class InterstitialAdApi {
         onShowFailedCallback?.call();
       },
     );
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    _ad?.dispose();
+    _ad = null;
+    _state.value = AdState.IDLE;
+    onClosedCallback = null;
+    onShowedCallback = null;
+    onLoadedCallback = null;
+    onShowFailedCallback = null;
   }
 }

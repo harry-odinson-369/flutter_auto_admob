@@ -8,11 +8,12 @@ import 'package:flutter_auto_admob/src/flutter_auto_admob.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AppOpenAdApi {
-  AppOpenAdApi._();
+  AppOpenAdApi();
+  AppOpenAdApi._singleton();
 
   FlutterAutoAdmobConfig _config = FlutterAutoAdmobConfig();
 
-  static final AppOpenAdApi _instance = AppOpenAdApi._();
+  static final AppOpenAdApi _instance = AppOpenAdApi._singleton();
   static AppOpenAdApi get instance => _instance;
 
   final ValueNotifier<AdState> _state = ValueNotifier(AdState.IDLE);
@@ -27,7 +28,10 @@ class AppOpenAdApi {
   Function? onLoadedCallback;
   Function? onClosedCallback;
 
-  bool get isCanShowAd => !state.value.isCoolingDown && !state.value.isShowing && !InterstitialAdApi.instance.state.value.isShowing;
+  bool get isCanShowAd =>
+      !state.value.isCoolingDown &&
+      !state.value.isShowing &&
+      !InterstitialAdApi.instance.state.value.isShowing;
 
   void startListenOnAppLifeCycleStateChanged(
     void Function(AppState state) stateChanged,
@@ -74,7 +78,8 @@ class AppOpenAdApi {
         _state.addListener(_stateListener);
         _ad = await requestAd();
         _ad?.show();
-      } else if (_config.appOpenAdLoadType == FlutterAutoAdmobLoadType.preload) {
+      } else if (_config.appOpenAdLoadType ==
+          FlutterAutoAdmobLoadType.preload) {
         _ad?.show();
       }
     } else {
@@ -118,7 +123,9 @@ class AppOpenAdApi {
     }
   }
 
-  Future<AppOpenAd?> requestAd([FullScreenContentCallback<AppOpenAd>? cb]) async {
+  Future<AppOpenAd?> requestAd([
+    FullScreenContentCallback<AppOpenAd>? cb,
+  ]) async {
     Completer<AppOpenAd?> completer = Completer<AppOpenAd?>();
     _state.value = AdState.REQUESTING;
     AppOpenAd.load(
@@ -161,5 +168,17 @@ class AppOpenAdApi {
         onShowFailedCallback?.call();
       },
     );
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    _ad?.dispose();
+    _ad = null;
+    _state.value = AdState.IDLE;
+    onClosedCallback = null;
+    onShowedCallback = null;
+    onLoadedCallback = null;
+    onShowFailedCallback = null;
   }
 }

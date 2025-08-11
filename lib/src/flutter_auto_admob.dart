@@ -23,7 +23,10 @@ enum AdState {
 }
 
 class FlutterAutoAdmob {
-  FlutterAutoAdmob();
+  FlutterAutoAdmob() {
+    _appOpenAdApi = AppOpenAdApi();
+    _interstitialAdApi = InterstitialAdApi();
+  }
   FlutterAutoAdmob._singleton();
 
   FlutterAutoAdmobConfig config = FlutterAutoAdmobConfig();
@@ -31,8 +34,11 @@ class FlutterAutoAdmob {
   static final FlutterAutoAdmob _ads = FlutterAutoAdmob._singleton();
   static FlutterAutoAdmob get ads => _ads;
 
-  AppOpenAdApi get appOpen => AppOpenAdApi.instance;
-  InterstitialAdApi get interstitial => InterstitialAdApi.instance;
+  AppOpenAdApi? _appOpenAdApi;
+  AppOpenAdApi get appOpen => _appOpenAdApi ?? AppOpenAdApi.instance;
+
+  InterstitialAdApi? _interstitialAdApi;
+  InterstitialAdApi get interstitial => _interstitialAdApi ?? InterstitialAdApi.instance;
 
   /// This [configure] function must be called once for the first time before the ads request.
   Future<InitializationStatus> configure({
